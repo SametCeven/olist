@@ -107,7 +107,50 @@ class Order:
         Returns a DataFrame with:
         order_id, distance_seller_customer
         """
-        pass  # YOUR CODE HERE
+        df_orders:pd.DataFrame = self.data["orders"].copy()
+        df_order_items:pd.DataFrame = self.data["order_items"].copy()
+        df_sellers:pd.DataFrame = self.data["sellers"].copy()
+        df_customers:pd.DataFrame = self.data["customers"].copy()
+
+        df_geo:pd.DataFrame = (
+            self.data["geolocation"]
+            .groupby("geolocation_zip_code_prefix", as_index=False)
+            .first()
+        )
+
+        df_sellers_geo:pd.DataFrame = df_sellers.merge(
+            df_geo,
+            left_on="seller_zip_code_prefix",
+            right_on="geolocation_zip_code_prefix",
+        )[["seller_id", "geolocation_lat", "geolocation_lng"]]
+
+        df_customers_geo:pd.DataFrame = df_customers.merge(
+            df_geo,
+            left_on="customer_zip_code_prefix",
+            right_on="geolocation_zip_code_prefix",
+        )[["customer_id", "geolocation_lat", "geolocation_lng"]]
+
+        df_matching:pd.DataFrame = (
+            df_orders[["order_id", "customer_id"]]
+            .merge(df_order_items[["order_id", "seller_id"]], on="order_id")
+            .merge(df_sellers_geo, on="seller_id")
+            .merge(df_customers_geo, on="customer_id",
+                   suffixes=("_seller", "_customer"))
+            .dropna()
+        )
+
+        df_matching["distance_seller_customer"] = df_matching.apply(
+            lambda row: haversine_distance(
+                row["geolocation_lng_seller"], row["geolocation_lat_seller"],
+                row["geolocation_lng_customer"], row["geolocation_lat_customer"]),
+            axis=1)
+
+        # An order can have several sellers: average the distance per order
+        return (
+            df_matching
+            .groupby("order_id", as_index=False)
+            .agg({"distance_seller_customer": "mean"})
+        )
 
     def get_training_data(self,
                           is_delivered=True,
@@ -119,7 +162,7 @@ class Order:
         'number_of_items', 'number_of_sellers', 'price', 'freight_value',
         'distance_seller_customer']
         """
-        df_wait_time:pd.DataFrame = self.get_wait_time()
+        df_wait_time:pd.DataFrame = self.get_wait_time(is_delivered)
         df_number_items:pd.DataFrame = self.get_number_items()
         df_number_sellers:pd.DataFrame = self.get_number_sellers()
         df_price_and_freight:pd.DataFrame = self.get_price_and_freight()
@@ -131,5 +174,9 @@ class Order:
             .merge(df_price_and_freight,how="left",on="order_id")
             .merge(df_review_score,how="left",on="order_id")
         ).dropna()
+
+        if with_distance_seller_customer:
+            df_training_data = df_training_data.merge(
+                self.get_distance_seller_customer(), on="order_id")
 
         return df_training_data
