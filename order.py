@@ -119,5 +119,17 @@ class Order:
         'number_of_items', 'number_of_sellers', 'price', 'freight_value',
         'distance_seller_customer']
         """
-        # Hint: make sure to re-use your instance methods defined above
-        pass  # YOUR CODE HERE
+        df_wait_time:pd.DataFrame = self.get_wait_time()
+        df_number_items:pd.DataFrame = self.get_number_items()
+        df_number_sellers:pd.DataFrame = self.get_number_sellers()
+        df_price_and_freight:pd.DataFrame = self.get_price_and_freight()
+        df_review_score:pd.DataFrame = self.get_review_score()
+
+        df_training_data = (df_wait_time
+            .merge(df_number_items,how="left",on="order_id")
+            .merge(df_number_sellers,how="left",on="order_id")
+            .merge(df_price_and_freight,how="left",on="order_id")
+            .merge(df_review_score,how="left",on="order_id")
+        ).dropna()
+
+        return df_training_data
